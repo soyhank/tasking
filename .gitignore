@@ -44,3 +44,5 @@ next-env.d.ts
 worker/node_modules
 worker/sesion
 worker/.env
+
+.vercel
