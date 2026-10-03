@@ -25,11 +25,13 @@ En vivo: https://tasking-actas.vercel.app
 
 ## WhatsApp (worker)
 
+El programa de envío corre en **segundo plano en la PC servidor**, sin ventanas: arranca solo al iniciar sesión en Windows (clave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, sin permisos de administrador) y un supervisor lo reinicia si se cae.
+
 1. Usar un **chip secundario**, nunca un número personal: la vinculación por QR no es la API oficial y WhatsApp puede bloquear el número.
-2. Doble clic en `worker\iniciar.bat` (la primera vez instala dependencias). Necesita Node.js.
-3. Escanear el QR desde la página **WhatsApp** de la web (o en la ventana negra) con *Dispositivos vinculados*.
-4. Mientras el worker esté apagado, los mensajes quedan en cola y salen al encenderlo.
-5. Para que arranque con Windows: acceso directo a `iniciar.bat` en `shell:startup`.
+2. El QR se escanea desde la página **WhatsApp** de la web. Ahí también están «Generar QR nuevo» y «Desvincular».
+3. Si la PC está apagada, los mensajes quedan en cola y salen al volver.
+
+Comandos (la instalación ya está hecha en la PC servidor): `node worker/servicio.mjs --instalar` · `--desinstalar` · `--estado`. Registro en `worker/registro.log`.
 
 Respuestas que entiende: `listo 154` (o `listo 154, 160`), `pendientes`, `ayuda`.
 

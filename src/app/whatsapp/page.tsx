@@ -6,6 +6,7 @@ import { ahoraMs, fechaLarga, plazoTexto } from '@/lib/fechas';
 import type { Mensaje, Persona } from '@/lib/tipos';
 import Refrescar from '@/components/Refrescar';
 import BotonReintentar from '@/components/BotonReintentar';
+import ControlWhatsapp from '@/components/ControlWhatsapp';
 
 export const metadata = { title: 'WhatsApp y correo' };
 
@@ -32,7 +33,7 @@ export default async function Pagina() {
     db().from('mensajes').select('id', { count: 'exact', head: true }).eq('estado', 'error'),
   ]);
   const wa = (aj?.valor ?? null) as EstadoWa | null;
-  const vivo = !!wa && ahoraMs() - new Date(wa.latido).getTime() < 2.5 * 60_000;
+  const vivo = !!wa && ahoraMs() - new Date(wa.latido).getTime() < 60_000;
   const nombre = new Map(((ps ?? []) as Pick<Persona, 'id' | 'nombre'>[]).map((p) => [p.id, p.nombre]));
   const correoOk = correoConfigurado();
 
@@ -55,7 +56,7 @@ export default async function Pagina() {
 
   return (
     <div className="space-y-5">
-      <Refrescar cada={vivo && wa?.conectado ? 20000 : 4000} />
+      <Refrescar cada={vivo && wa?.conectado ? 15000 : 3000} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">WhatsApp y correo</h1>
         <p className="text-sm text-slate-500">Estado de los canales de envío y la cola de avisos.</p>
@@ -70,28 +71,31 @@ export default async function Pagina() {
               {vivo && wa?.conectado ? `Conectado${wa.numero ? ` · +${wa.numero}` : ''}` : vivo ? 'Esperando que escanees el QR' : 'Programa de envío apagado'}
             </span>
           </div>
-          {vivo && !wa?.conectado && wa?.qr && (
-            <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={wa.qr} alt="Código QR para vincular WhatsApp" className="size-56 rounded-xl border border-slate-200" />
-              <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-600">
+          {vivo && !wa?.conectado && (
+            <div className="mt-4 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+              {wa?.qr ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={wa.qr} alt="Código QR para vincular WhatsApp" className="size-60 rounded-xl border border-slate-200" />
+              ) : (
+                <div className="grid size-60 place-items-center rounded-xl border border-dashed border-slate-300 text-center text-sm text-slate-400">Preparando el QR…</div>
+              )}
+              <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600">
                 <li>Abre WhatsApp en el celular del <b>chip secundario</b>.</li>
-                <li>Toca <b>Dispositivos vinculados</b> → <b>Vincular un dispositivo</b>.</li>
-                <li>Escanea este código. Se actualiza solo.</li>
+                <li>Toca <b>⋮</b> o <b>Configuración</b> → <b>Dispositivos vinculados</b> → <b>Vincular un dispositivo</b>.</li>
+                <li>Apunta la cámara a este código. Se renueva solo cada pocos segundos.</li>
               </ol>
             </div>
           )}
           {!vivo && (
             <div className="mt-3 space-y-2 text-sm text-slate-600">
-              <p>Los WhatsApp los envía un programa pequeño que corre en una PC encendida (la laptop de las reuniones u otra). Mientras esté apagado, los mensajes se guardan en cola y salen al encenderlo.</p>
-              <p>
-                Para encenderlo: doble clic en <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">worker\iniciar.bat</code> dentro de la carpeta de Tasking.
-              </p>
+              <p>El programa de envío corre en segundo plano en la <b>PC servidor</b> y arranca solo al encenderla e iniciar sesión en Windows. Ahora no está respondiendo: revisa que esa PC esté encendida, con la sesión iniciada y con internet.</p>
+              <p>Mientras tanto, los mensajes se guardan en cola y salen apenas vuelva.</p>
               {wa?.latido && <p className="text-xs text-slate-400">Última señal: {fechaLarga(wa.latido)}</p>}
             </div>
           )}
           {vivo && wa?.conectado && <p className="mt-3 text-sm text-slate-600">Listo. Los compromisos y recordatorios salen desde {wa.nombre ? `«${wa.nombre}»` : 'este número'}. Si alguien responde «listo 154», se marca solo.</p>}
-          {wa?.detalle && !wa.conectado && <p className="mt-2 text-xs text-amber-700">{wa.detalle}</p>}
+          {wa?.detalle && !wa.conectado && vivo && <p className="mt-2 text-xs text-amber-700">{wa.detalle}</p>}
+          {vivo && <ControlWhatsapp conectado={!!wa?.conectado} />}
         </section>
 
         <section className="tarjeta p-5">

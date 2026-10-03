@@ -53,9 +53,25 @@ const existeCache = new Map();
 async function informar(extra = {}) {
   const numero = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
   try {
-    await api('/api/whatsapp/estado', { conectado, qr: conectado ? null : ultimoQr, numero, nombre: sock?.user?.name ?? null, ...extra });
+    const r = await api('/api/whatsapp/estado', { conectado, qr: conectado ? null : ultimoQr, numero, nombre: sock?.user?.name ?? null, ...extra });
+    if (r?.comando) await ejecutarComando(r.comando);
   } catch (e) {
     log('No se pudo avisar el estado a la web:', e.message);
+  }
+}
+
+// Órdenes que llegan desde la página WhatsApp de la web
+async function ejecutarComando(comando) {
+  log(`Orden desde la web: ${comando}`);
+  if (comando === 'desvincular') {
+    if (conectado) await sock.logout().catch(() => sock.end(new Error('desvincular')));
+    else {
+      fs.rmSync(CARPETA_SESION, { recursive: true, force: true });
+      sock?.end(new Error('desvincular'));
+    }
+    existeCache.clear();
+  } else if (comando === 'qr_nuevo' && !conectado) {
+    sock?.end(new Error('qr nuevo'));
   }
 }
 
@@ -140,7 +156,7 @@ async function alRecibir({ messages, type }) {
 async function conectar() {
   const { state, saveCreds } = await useMultiFileAuthState(CARPETA_SESION);
   const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
-  sock = makeWASocket({
+  const este = makeWASocket({
     auth: state,
     version,
     logger: pino({ level: 'silent' }),
@@ -148,13 +164,13 @@ async function conectar() {
     markOnlineOnConnect: false,
     syncFullHistory: false,
   });
+  sock = este;
   sock.ev.on('creds.update', saveCreds);
   sock.ev.on('messages.upsert', alRecibir);
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
       ultimoQr = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
-      console.log(await QRCode.toString(qr, { type: 'terminal', small: true }));
-      log('Escanea el QR (aquí o en la página WhatsApp de Tasking) con el celular del chip secundario.');
+      log('QR nuevo listo: escanéalo desde la página WhatsApp de Tasking con el celular del chip secundario.');
       await informar();
     }
     if (connection === 'open') {
@@ -165,12 +181,14 @@ async function conectar() {
       enviarCola();
     }
     if (connection === 'close') {
+      if (este !== sock) return; // un socket viejo ya reemplazado
       conectado = false;
+      ultimoQr = null;
       const codigo = lastDisconnect?.error?.output?.statusCode;
       if (codigo === DisconnectReason.loggedOut) {
-        log('Se cerró la sesión desde el celular. Se pedirá un QR nuevo.');
+        log('Sesión cerrada (desde el celular o desde la web). Se pedirá un QR nuevo.');
         fs.rmSync(CARPETA_SESION, { recursive: true, force: true });
-        await informar({ detalle: 'La sesión se cerró desde el celular; escanea el QR nuevo.' });
+        await informar({ detalle: 'Se desvinculó el número; escanea el QR nuevo para vincular otro.' });
       } else {
         log(`Conexión cerrada (código ${codigo ?? '?'}), reconectando…`);
         await informar({ detalle: 'Reconectando…' });
@@ -184,7 +202,7 @@ log(`Tasking · WhatsApp → ${APP_URL}`);
 await conectar();
 setInterval(enviarCola, CADA_COLA_MS);
 // Latido para que la web sepa que este programa está encendido, y respaldo del cron de correos/agenda
-setInterval(() => informar(), 60_000);
+setInterval(() => informar(), 10_000);
 setInterval(() => api(`/api/cron`, null, 'GET').catch((e) => log('Cron:', e.message)), 60_000);
 process.on('SIGINT', async () => {
   conectado = false;

@@ -46,3 +46,5 @@ worker/sesion
 worker/.env
 
 .vercel
+worker/registro.log*
+worker/arranque-oculto.vbs
