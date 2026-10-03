@@ -1,19 +1,18 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
+import { claveOperadorCorrecta, claveServicio, secretoSesion } from './config';
 import { db } from './db';
 import type { Persona } from './tipos';
 
 // Dos tipos de acceso:
-//  - Operador (quien graba las reuniones y administra): contraseña ADMIN_PASSWORD.
+//  - Operador (quien graba las reuniones y administra): contraseña creada en el asistente de instalación.
 //  - Trabajador: entra con el enlace personal que le llega por WhatsApp/correo (/c/<token>).
 const COOKIE_ADMIN = 'tk_admin';
 const COOKIE_PERSONA = 'tk_persona';
 const DURACION_S = 60 * 60 * 24 * 60; // 60 días
 
 function secreto() {
-  const s = process.env.SESSION_SECRET;
-  if (!s) throw new Error('Falta SESSION_SECRET.');
-  return s;
+  return secretoSesion();
 }
 
 function firmar(valor: string) {
@@ -40,11 +39,8 @@ const opcionesCookie = {
   maxAge: DURACION_S,
 };
 
-export function claveAdminCorrecta(clave: string) {
-  const real = process.env.ADMIN_PASSWORD || '';
-  const a = Buffer.from(clave);
-  const b = Buffer.from(real);
-  return real.length > 0 && a.length === b.length && timingSafeEqual(a, b);
+export async function claveAdminCorrecta(clave: string) {
+  return claveOperadorCorrecta(clave);
 }
 
 export async function iniciarAdmin() {
@@ -58,7 +54,9 @@ export async function cerrarSesion() {
 }
 
 export async function esAdmin() {
-  const valor = verificar((await cookies()).get(COOKIE_ADMIN)?.value);
+  const cookie = (await cookies()).get(COOKIE_ADMIN)?.value;
+  if (!cookie) return false;
+  const valor = verificar(cookie);
   if (!valor) return false;
   const exp = Number(valor.split(':')[1]);
   return Number.isFinite(exp) && exp > Date.now();
@@ -69,7 +67,9 @@ export async function recordarPersona(token: string) {
 }
 
 export async function personaActual(): Promise<Persona | null> {
-  const token = verificar((await cookies()).get(COOKIE_PERSONA)?.value);
+  const cookie = (await cookies()).get(COOKIE_PERSONA)?.value;
+  if (!cookie) return null;
+  const token = verificar(cookie);
   if (!token) return null;
   const { data } = await db().from('personas').select('*').eq('token', token).eq('activo', true).maybeSingle();
   return (data as Persona) ?? null;
@@ -77,13 +77,18 @@ export async function personaActual(): Promise<Persona | null> {
 
 /** Quién está mirando: operador, trabajador o nadie. */
 export async function sesion() {
-  const [admin, persona] = await Promise.all([esAdmin(), personaActual()]);
-  return { admin, persona };
+  try {
+    const [admin, persona] = await Promise.all([esAdmin(), personaActual()]);
+    return { admin, persona };
+  } catch {
+    // App aún sin instalar (faltan las variables de Supabase o las tablas)
+    return { admin: false, persona: null };
+  }
 }
 
 /** Para rutas que llaman el cron de Supabase y el worker de WhatsApp. */
 export function claveServicioCorrecta(req: Request) {
-  const esperado = process.env.CRON_SECRET || '';
+  const esperado = claveServicio();
   const url = new URL(req.url);
   const recibido =
     req.headers.get('x-tasking-key') ||

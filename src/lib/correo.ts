@@ -1,34 +1,39 @@
 import nodemailer from 'nodemailer';
+import { config, type Smtp } from './config';
 import { db } from './db';
 import type { Mensaje } from './tipos';
 
-export function correoConfigurado() {
-  return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+export async function correoConfigurado() {
+  return !!(await config()).smtp?.usuario;
 }
 
-function transporte() {
-  const host = process.env.SMTP_HOST;
+export function transporte(s: Smtp) {
   return nodemailer.createTransport(
-    host
-      ? { host, port: Number(process.env.SMTP_PORT || 465), secure: Number(process.env.SMTP_PORT || 465) === 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } }
-      : { service: 'gmail', auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } },
+    s.host
+      ? { host: s.host, port: s.puerto || 465, secure: (s.puerto || 465) === 465, auth: { user: s.usuario, pass: s.clave } }
+      : { service: 'gmail', auth: { user: s.usuario, pass: s.clave } },
   );
+}
+
+export function remitente(s: Smtp, empresa?: string) {
+  return `"${s.remitente || (empresa ? `Tasking · ${empresa}` : 'Tasking')}" <${s.usuario}>`;
 }
 
 /** Envía los correos que ya tocan. Si el correo no está configurado, quedan en cola sin gastar intentos. */
 export async function enviarCorreosPendientes(limite = 20) {
-  if (!correoConfigurado()) return { enviados: 0, errores: 0, sinConfigurar: true };
+  const c = await config();
+  if (!c.smtp?.usuario) return { enviados: 0, errores: 0, sinConfigurar: true };
   const { data, error } = await db().rpc('tomar_mensajes', { p_canal: 'correo', p_limite: limite });
   if (error) throw new Error(error.message);
   const lote = (data ?? []) as Mensaje[];
   if (!lote.length) return { enviados: 0, errores: 0 };
-  const t = transporte();
-  const remitente = `"${process.env.SMTP_FROM_NAME || 'Tasking'}" <${process.env.SMTP_USER}>`;
+  const t = transporte(c.smtp);
+  const de = remitente(c.smtp, c.empresa);
   let enviados = 0;
   let errores = 0;
   for (const m of lote) {
     try {
-      await t.sendMail({ from: remitente, to: m.destino, subject: m.asunto || 'Aviso de Tasking', text: m.cuerpo, html: m.html || undefined });
+      await t.sendMail({ from: de, to: m.destino, subject: m.asunto || 'Aviso de Tasking', text: m.cuerpo, html: m.html || undefined });
       await db().from('mensajes').update({ estado: 'enviado', enviado_en: new Date().toISOString(), error: null }).eq('id', m.id);
       enviados++;
     } catch (e) {

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { sesion } from '@/lib/auth';
+import { estadoInstalacion } from '@/lib/config';
 import FormIngreso from './FormIngreso';
 
 export const metadata = { title: 'Ingresar' };
@@ -7,6 +8,8 @@ export const metadata = { title: 'Ingresar' };
 export default async function Ingresar() {
   const { admin } = await sesion();
   if (admin) redirect('/');
+  const instalacion = await estadoInstalacion().catch(() => null);
+  if (!instalacion?.configurado) redirect('/configurar');
   return (
     <div className="mx-auto mt-10 max-w-sm">
       <div className="tarjeta p-6">

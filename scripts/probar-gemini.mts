@@ -2,7 +2,7 @@
 import { actaDesdeTexto } from '../src/lib/gemini.ts';
 import { createClient } from '@supabase/supabase-js';
 
-const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, { db: { schema: 'tasking' } });
+const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, { db: { schema: process.env.SUPABASE_SCHEMA || 'public' } });
 const { data: r } = await sb.from('reuniones').select('*').eq('id', process.argv[2]).single();
 const { data: ps } = await sb.from('personas').select('*').eq('activo', true);
 const t0 = Date.now();

@@ -1,7 +1,8 @@
 // Ejecuta un archivo .sql (o texto) contra el proyecto Supabase vía Management API.
 // Uso: node scripts/sql.mjs archivo.sql   |   node scripts/sql.mjs -e "select 1"
 import fs from 'node:fs';
-const REF = process.env.SUPABASE_REF || 'pnqcfgbmrndvwcjqpkml';
+const REF = process.env.SUPABASE_REF;
+if (!REF) throw new Error('Define SUPABASE_REF (el id de tu proyecto) y SUPABASE_ACCESS_TOKEN.');
 const q = process.argv[2] === '-e' ? process.argv[3] : fs.readFileSync(process.argv[2], 'utf8');
 const r = await fetch(`https://api.supabase.com/v1/projects/${REF}/database/query`, {
   method: 'POST',

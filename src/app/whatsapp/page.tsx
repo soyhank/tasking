@@ -7,6 +7,8 @@ import type { Mensaje, Persona } from '@/lib/tipos';
 import Refrescar from '@/components/Refrescar';
 import BotonReintentar from '@/components/BotonReintentar';
 import ControlWhatsapp from '@/components/ControlWhatsapp';
+import ComandoWorker from '@/components/ComandoWorker';
+import { comandoInstalarWorker } from '@/lib/worker-instalacion';
 
 export const metadata = { title: 'WhatsApp y correo' };
 
@@ -35,7 +37,7 @@ export default async function Pagina() {
   const wa = (aj?.valor ?? null) as EstadoWa | null;
   const vivo = !!wa && ahoraMs() - new Date(wa.latido).getTime() < 60_000;
   const nombre = new Map(((ps ?? []) as Pick<Persona, 'id' | 'nombre'>[]).map((p) => [p.id, p.nombre]));
-  const correoOk = correoConfigurado();
+  const correoOk = await correoConfigurado();
 
   const fila = (m: Mensaje, futuro: boolean) => (
     <li key={m.id} className="grid grid-cols-[80px_1fr_auto] items-start gap-x-3 gap-y-0.5 py-2.5 text-sm">
@@ -88,8 +90,8 @@ export default async function Pagina() {
           )}
           {!vivo && (
             <div className="mt-3 space-y-2 text-sm text-slate-600">
-              <p>El programa de envío corre en segundo plano en la <b>PC servidor</b> y arranca solo al encenderla e iniciar sesión en Windows. Ahora no está respondiendo: revisa que esa PC esté encendida, con la sesión iniciada y con internet.</p>
-              <p>Mientras tanto, los mensajes se guardan en cola y salen apenas vuelva.</p>
+              <p>{wa?.latido ? 'El programa de envío de la PC servidor no está respondiendo: revisa que esa PC esté encendida, con la sesión de Windows iniciada y con internet. Los mensajes esperan en cola y salen apenas vuelva.' : 'Falta instalar el programa de envío en la PC que quedará siempre encendida (la «PC servidor»). Se hace una sola vez:'}</p>
+              {!wa?.latido && <ComandoWorker comando={comandoInstalarWorker()} />}
               {wa?.latido && <p className="text-xs text-slate-400">Última señal: {fechaLarga(wa.latido)}</p>}
             </div>
           )}

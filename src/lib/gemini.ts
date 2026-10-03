@@ -1,16 +1,16 @@
+import { config } from './config';
 import { calendarioProximo, fechaLarga } from './fechas';
 import type { Persona } from './tipos';
 
 // Se prueban en orden: si un modelo no existe (404), está saturado (500/503) o agotó el cupo (429), pasa al siguiente.
-const MODELOS = [
-  process.env.GEMINI_MODEL,
+const MODELOS_BASE = [
   'gemini-3.8-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.7-flash',
   'gemini-flash-latest',
   'gemini-3.5-flash-lite',
-].filter((m, i, a) => m && a.indexOf(m) === i) as string[];
+];
 // 400/404 incluidos: Google retira los modelos viejos con un 400 («no longer available»)
 const REINTENTABLES = new Set([400, 404, 429, 500, 502, 503, 504]);
 // Si todos fallan (saturación pasajera de Google), se espera y se da otra vuelta completa
@@ -112,9 +112,19 @@ ${lista || '(no se registraron participantes)'}`;
 
 type Parte = { text: string } | { inlineData: { mimeType: string; data: string } } | { fileData: { mimeType: string; fileUri: string } };
 
+async function claveGemini() {
+  const c = await config();
+  if (!c.gemini_key) throw new Error('Falta la clave de Gemini: configúrala en Ajustes.');
+  return c.gemini_key;
+}
+
+async function modelos() {
+  const preferido = (await config()).gemini_modelo;
+  return [preferido, ...MODELOS_BASE].filter((m, i, a) => m && a.indexOf(m) === i) as string[];
+}
+
 async function llamar(modelo: string, partes: Parte[], conTranscripcion: boolean): Promise<ActaIA> {
-  const clave = process.env.GEMINI_API_KEY;
-  if (!clave) throw new Error('Falta GEMINI_API_KEY.');
+  const clave = await claveGemini();
   const r = await fetch(`${API}/v1beta/models/${modelo}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': clave },
@@ -144,6 +154,7 @@ async function llamar(modelo: string, partes: Parte[], conTranscripcion: boolean
 }
 
 async function enCascada(partes: Parte[], conTranscripcion: boolean) {
+  const MODELOS = await modelos();
   const fallos: string[] = [];
   for (let vuelta = 0; vuelta <= ESPERAS_ENTRE_VUELTAS_MS.length; vuelta++) {
     if (vuelta > 0) await new Promise((r) => setTimeout(r, ESPERAS_ENTRE_VUELTAS_MS[vuelta - 1]));
@@ -177,7 +188,7 @@ export async function actaDesdeTexto(o: { transcripcion: string; participantes: 
 
 /** Sube el audio a Gemini (API de archivos) y espera a que quede listo. */
 async function subirAudio(audio: Buffer, mimeType: string) {
-  const clave = process.env.GEMINI_API_KEY!;
+  const clave = await claveGemini();
   const inicio = await fetch(`${API}/upload/v1beta/files`, {
     method: 'POST',
     headers: {

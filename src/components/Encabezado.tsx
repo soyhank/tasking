@@ -13,6 +13,7 @@ export default async function Encabezado() {
         { href: '/equipo', texto: 'Equipo' },
         { href: '/whatsapp', texto: 'WhatsApp' },
         { href: '/reportes', texto: 'Reportes' },
+        { href: '/ajustes', texto: 'Ajustes' },
       ]
     : persona
       ? [
