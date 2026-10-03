@@ -28,6 +28,8 @@ export interface Reunion {
   modelo: string | null;
   fuente: string | null;
   error: string | null;
+  intentos: number;
+  procesado_en: string | null;
   creado_en: string;
 }
 

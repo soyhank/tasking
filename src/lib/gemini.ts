@@ -5,13 +5,16 @@ import type { Persona } from './tipos';
 const MODELOS = [
   process.env.GEMINI_MODEL,
   'gemini-3.8-flash',
-  'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
+  'gemini-3.7-flash',
   'gemini-flash-latest',
-  'gemini-2.5-flash',
-].filter(Boolean) as string[];
-const REINTENTABLES = new Set([404, 429, 500, 503]);
+  'gemini-3.5-flash-lite',
+].filter((m, i, a) => m && a.indexOf(m) === i) as string[];
+// 400/404 incluidos: Google retira los modelos viejos con un 400 («no longer available»)
+const REINTENTABLES = new Set([400, 404, 429, 500, 502, 503, 504]);
+// Si todos fallan (saturación pasajera de Google), se espera y se da otra vuelta completa
+const ESPERAS_ENTRE_VUELTAS_MS = [5000, 15000];
 const API = 'https://generativelanguage.googleapis.com';
 
 export interface CompromisoIA {
@@ -141,18 +144,27 @@ async function llamar(modelo: string, partes: Parte[], conTranscripcion: boolean
 }
 
 async function enCascada(partes: Parte[], conTranscripcion: boolean) {
-  let ultimo: (Error & { status?: number }) | null = null;
-  for (const modelo of MODELOS) {
-    try {
-      const acta = await llamar(modelo, partes, conTranscripcion);
-      return { acta, modelo };
-    } catch (e) {
-      ultimo = e as Error & { status?: number };
-      // Sin status = respuesta vacía o JSON roto: vale la pena probar otro modelo.
-      if (ultimo.status && !REINTENTABLES.has(ultimo.status)) break;
+  const fallos: string[] = [];
+  for (let vuelta = 0; vuelta <= ESPERAS_ENTRE_VUELTAS_MS.length; vuelta++) {
+    if (vuelta > 0) await new Promise((r) => setTimeout(r, ESPERAS_ENTRE_VUELTAS_MS[vuelta - 1]));
+    for (const modelo of MODELOS) {
+      try {
+        const acta = await llamar(modelo, partes, conTranscripcion);
+        return { acta, modelo };
+      } catch (e) {
+        const err = e as Error & { status?: number };
+        fallos.push(`${modelo}: ${err.status ? `HTTP ${err.status} ` : ''}${err.message.slice(0, 140)}`);
+        // 401/403 = clave inválida: no tiene sentido seguir probando
+        if (err.status === 401 || err.status === 403) throw new Error(`Gemini rechazó la clave: ${err.message}`);
+        // Sin status = respuesta vacía o JSON roto: vale la pena probar otro modelo.
+        if (err.status && !REINTENTABLES.has(err.status)) break;
+      }
     }
   }
-  throw new Error(`No se pudo procesar con Gemini: ${ultimo?.message ?? 'error desconocido'}`);
+  console.error('[gemini] todos los modelos fallaron', fallos);
+  throw new Error(
+    `Gemini no respondió (suele ser saturación pasajera de Google; pulsa «Volver a intentar»). Detalle: ${fallos.slice(-MODELOS.length).join(' | ')}`,
+  );
 }
 
 /** Acta a partir de la transcripción en texto (lo normal: subtítulos en vivo del navegador). */

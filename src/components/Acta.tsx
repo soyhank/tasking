@@ -145,7 +145,8 @@ export default function Acta({ reunion: r, compromisos, mensajes, personas }: { 
   const router = useRouter();
   const [accion, setAccion] = useState<'' | 'procesar' | 'eliminar'>('');
   const [ocupado, setOcupado] = useState(false);
-  const enCurso = r.estado === 'procesando';
+  const reintentoAuto = r.estado === 'error' && !!r.error?.startsWith('Gemini no respondió') && (r.intentos ?? 0) < 4;
+  const enCurso = r.estado === 'procesando' || reintentoAuto;
 
   useEffect(() => {
     if (!enCurso) return;
@@ -207,6 +208,7 @@ export default function Acta({ reunion: r, compromisos, mensajes, personas }: { 
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
           <p className="font-semibold text-red-800">No se pudo armar el acta</p>
           <p className="mt-1 text-sm text-red-700">{r.error}</p>
+          {reintentoAuto && <p className="mt-2 text-sm font-medium text-red-800">Se volverá a intentar solo en unos minutos (intento {r.intentos} de 4). Esta página se actualiza sola.</p>}
           <button onClick={procesar} disabled={ocupado} className="btn-primario mt-3">{ocupado ? 'Enviando…' : 'Volver a intentar'}</button>
         </div>
       )}

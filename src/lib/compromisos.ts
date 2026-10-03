@@ -35,6 +35,7 @@ async function audioDeReunion(r: Reunion) {
 export async function procesarReunion(id: string) {
   const { data } = await db().from('reuniones').select('*').eq('id', id).single();
   const r = data as Reunion;
+  await db().from('reuniones').update({ intentos: (r.intentos ?? 0) + 1, procesado_en: new Date().toISOString() }).eq('id', id);
   try {
     const todas = await personasPorId();
     const activos = [...todas.values()].filter((p) => p.activo);
@@ -111,6 +112,29 @@ export async function procesarReunion(id: string) {
     await db().from('reuniones').update({ estado: 'error', error: (e as Error).message.slice(0, 800) }).eq('id', id);
     return { ok: false, error: (e as Error).message };
   }
+}
+
+const MAX_INTENTOS_AUTOMATICOS = 4;
+
+/** Vuelve a procesar sola una reunión que falló por saturación de Gemini (la llama el cron). */
+export async function reintentarFallidas() {
+  const hace3min = new Date(Date.now() - 3 * 60_000).toISOString();
+  const hace12h = new Date(Date.now() - 12 * 3600_000).toISOString();
+  const { data } = await db()
+    .from('reuniones')
+    .select('id')
+    .eq('estado', 'error')
+    .like('error', 'Gemini no respondió%')
+    .lt('intentos', MAX_INTENTOS_AUTOMATICOS)
+    .lt('procesado_en', hace3min)
+    .gt('inicio', hace12h)
+    .limit(1);
+  const r = data?.[0];
+  if (!r) return null;
+  // Se marca «procesando» antes, para que dos cron seguidos no la tomen a la vez
+  const { data: tomada } = await db().from('reuniones').update({ estado: 'procesando' }).eq('id', r.id).eq('estado', 'error').select('id');
+  if (!tomada?.length) return null;
+  return r.id as string;
 }
 
 export interface CambioCompromiso {
